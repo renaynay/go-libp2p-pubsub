@@ -7,6 +7,16 @@ import (
 	pb "github.com/libp2p/go-libp2p-pubsub/pb"
 )
 
+// Router is an implementation of a Plumtree router.
+/*
+TODO:
+  - Implement message cache (@distractedm1nd)
+  - Implement timed publishing for lazies (@distractedm1nd)
+  - Implement timer on receiving IHAVE -> sending IWANT/GRAFT if not already received by direct peer (the peer that has you as an eager)
+  - Implement listener loop for messages (checking for dups and sending PRUNEs) - receive handlers (@renaynay)
+  - Implement Optimization procedure for tree cleanup (@distractedm1nd) - NICE TO HAVE RN
+  - implement NeighborUp/NeighborDown (@renaynay)
+*/
 type Router struct {
 	p       *PubSub
 	tracker *tracker
@@ -18,8 +28,9 @@ func (r *Router) Protocols() []protocol.ID {
 }
 
 func (r *Router) Attach(sub *PubSub) {
-	//TODO implement me
-	panic("implement me")
+	r.p = sub
+
+	r.tracker.start()
 }
 
 func (r *Router) AddPeer(id libpeer.ID, id2 protocol.ID) {
@@ -50,24 +61,24 @@ func (r *Router) HandleRPC(rpc *RPC) {
 }
 
 func (r *Router) Publish(msg *Message) {
+	// TODO: increase round parameter in message
 	// eager peers get full message
 	for p := range r.tracker.eager {
 		r.p.peers[p] <- rpcWithMessages(msg.Message)
 	}
 	// send IHAVE of msg hash to lazy peers
-	// TODO: schedule messages to be sent, instead of sending right away
-	for p := range r.tracker.lazy {
-		// send msg
-		ihave := &RPC{
-			RPC: pb.RPC{
-				Control: &pb.ControlMessage{
-					Ihave: []*pb.ControlIHave{{
-						TopicID:    msg.Topic,
-						MessageIDs: []string{msg.ID},
-					}},
-				},
+	ihave := &RPC{
+		RPC: pb.RPC{
+			Control: &pb.ControlMessage{
+				Ihave: []*pb.ControlIHave{{
+					TopicID:    msg.Topic,
+					MessageIDs: []string{msg.ID},
+				}},
 			},
-		}
+		},
+	}
+	for p := range r.tracker.lazy {
+		// TODO: schedule messages to be sent, instead of sending right away
 		r.p.peers[p] <- ihave
 	}
 }
